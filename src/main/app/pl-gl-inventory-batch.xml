@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:mulerequester="http://www.mulesoft.org/schema/mule/mulerequester" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mulerequester http://www.mulesoft.org/schema/mule/mulerequester/current/mule-mulerequester.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+<!--DB config -->
+  <spring:beans>
+        <spring:bean id="datasource" name="datasource" class="org.enhydra.jdbc.standard.StandardXADataSource" destroy-method="shutdown">
+            <spring:property name="driverName" value="org.apache.derby.jdbc.EmbeddedDriver"/>
+            <spring:property name="url" value="jdbc:derby:derbydb"/>
+        </spring:bean>
+        <spring:bean id="dbinitialization" name="dbinit"  class="utils.inmemorystore.DBInitialization" scope="singleton"/>
+   </spring:beans>
+  <!--The below, creates a connection to the derby datbase -->  
+   <db:derby-config name="Derby_Configuration" url="jdbc:derby:derbydb;create=true" doc:name="Derby Configuration"/>
+    	<sftp:connector name="SFTP-Inbound-Int" validateConnections="true" tempDirInbound="backup" keepFileOnError="true" autoDelete="false" useTempFileTimestampSuffix="true" doc:name="SFTP">
+        <reconnect frequency="20000"/>
+    </sftp:connector>
+
+    <flow name="pl-gl-inventory-batchFlow">
+        <poll doc:name="Poll">
+            <fixed-frequency-scheduler frequency="10" timeUnit="MINUTES"/>
+            <logger message="file processing started" level="INFO" doc:name="Logger"/>
+
+     
+        </poll>
+        
+<!--            <scripting:transformer doc:name="Call SFTP EndPoint">
+            <scripting:script engine="Groovy"><![CDATA[def endpointBuilder = muleContext.endpointFactory.getEndpointBuilder( 
+                    "sftp://muleSftpAdmin:"+ java.net.URLEncoder.encode("ShippingOrders", 'UTF-8') + "@54.236.55.43:22:/home/muleSftpAdmin/inventory" + "?connector=SFTP-Inbound-Int"); 
+                    def filter=new org.mule.transport.file.filters.FilenameWildcardFilter();
+					filter.setPattern("*.txt");
+					endpointBuilder.addMessageProcessor(new org.mule.routing.MessageFilter(filter));
+					endpointBuilder.setExchangePattern(org.mule.MessageExchangePattern.fromString("REQUEST_RESPONSE"));
+                    def inboundEndpoint = endpointBuilder.buildInboundEndpoint() ;
+                    inboundEndpoint.request(100000L) ;]]></scripting:script>
+        </scripting:transformer> -->
+      
+        <mulerequester:request resource="file://C:/tmp/inventorytest.txt?autoDelete=false" doc:name="Read_orderDetails"  />
+          <logger message="File read completed" level="INFO" doc:name="Logger"/> 
+        <dw:transform-message doc:name="Transform Message" metadata:id="6c7b49e2-6c80-49c9-b268-60c82df24f6c">
+        <dw:input-payload mimeType="application/java"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+
+%output application/java
+
+
+---
+(payload splitBy "\n") map {
+	item_id:$[0..8] default "",
+	store_id:$[11..13] default "",
+	quantity:$[15] default ""
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <!-- Bulk Insertion in Derby table -->
+        <db:insert config-ref="Derby_Configuration" bulkMode="true" doc:name="BULK_Inset_Inventory">
+            <db:parameterized-query><![CDATA[INSERT INTO INVENTORY_FILE (item_id,store_id,quantity) VALUES (#[payload.item_id], #[payload.store_id], #[payload.quantity])]]></db:parameterized-query>
+        </db:insert>
+        
+        <!-- Select query execution from Derby table --> 
+<db:select config-ref="Derby_Configuration" doc:name="QueryDerby">
+            <db:parameterized-query><![CDATA[Select * from INVENTORY_FILE order by store_id]]></db:parameterized-query>
+        </db:select>
+        <logger message="Order by  store id data : #[payload.toString()]" level="INFO" doc:name="Logger"/>
+    </flow>
+</mule>
