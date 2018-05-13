@@ -39,7 +39,7 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
         
 <!--            <scripting:transformer doc:name="Call SFTP EndPoint">
             <scripting:script engine="Groovy"><![CDATA[def endpointBuilder = muleContext.endpointFactory.getEndpointBuilder( 
-                    "sftp://muleSftpAdmin:"+ java.net.URLEncoder.encode("ShippingOrders", 'UTF-8') + "@54.236.55.43:22:/home/muleSftpAdmin/inventory" + "?connector=SFTP-Inbound-Int"); 
+                    "sftp://muleSftpAdmin:"+ java.net.URLEncoder.encode("XXXXXXXXXX", 'UTF-8') + "@54.236.55.43:22:/home/muleSftpAdmin/inventory" + "?connector=SFTP-Inbound-Int"); 
                     def filter=new org.mule.transport.file.filters.FilenameWildcardFilter();
 					filter.setPattern("*.txt");
 					endpointBuilder.addMessageProcessor(new org.mule.routing.MessageFilter(filter));
